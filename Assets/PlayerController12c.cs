@@ -1,81 +1,89 @@
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+//Definiuje jaki inny komponenent jest obowi?zkowy dla poprawnego dzia?ania tego skryptu
+//1. Nie b?dzie mo?liwo?ci usun?? ten komponent z gameObject'u
+//2. Je?li nie by? dodany r?cznie, to b?dzie dodany automatycznie
+[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(BoxCollider2D))]
+[RequireComponent(typeof(Animator))]
 public class PlayerController12c : MonoBehaviour
 {
-    public float moveSpeed = 5f;
-    public float runSpeed = 8f;
-    public float jumpForce = 16f;
+    public float moveSpeed = 5;
+    public float runSpeed = 7;
+    public float jumpForce = 100;
+    public int maxJumps = 2;
 
-    private float horizontal;
-    private bool isFacingRight = true;
-    private bool doubleJump = false;
+    private Rigidbody2D rb;
+    public SpriteRenderer spriteRenderer;
 
-    [SerializeField] private Rigidbody2D rb;
-    [SerializeField] private Transform groundCheck;
-    [SerializeField] private LayerMask groundLayer;
-    [SerializeField] private SpriteRenderer spriteRenderer;
-    [SerializeField] private Animator animator;
+    private bool isSprint = false;
+    private float moveVector = 0;
+
+    private int jumpCount;
+    private bool jumpQueued = false;
+
+    public GroundChecker groundChecker;
+
+    private Animator anim;
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        anim = GetComponent<Animator>();
+    }
 
     void Update()
     {
-        // Movement input
-        horizontal = Input.GetAxisRaw("Horizontal");
+        moveVector = Input.GetAxis("Horizontal");
 
         // Sprint
-        bool isSprint = Input.GetKey(KeyCode.LeftShift);
+        isSprint = Input.GetKey(KeyCode.LeftShift);
 
-        // Reset double jump on ground
-        if (IsGrounded() && !Input.GetButton("Jump"))
+        // Double Jump input
+        if (Input.GetKeyDown(KeyCode.Space))
         {
-            doubleJump = false;
-        }
-
-        // Jump
-        if (Input.GetButtonDown("Jump"))
-        {
-            if (IsGrounded() || !doubleJump)
+            if (groundChecker.isGrounded || jumpCount < maxJumps)
             {
-                rb.velocity = new Vector2(rb.velocity.x, jumpForce);
-                
-                // Trigger animations
-                if (IsGrounded()) 
-                    animator.SetTrigger("IsJump");
-                else 
-                    animator.SetTrigger("DoubleJ");
+                jumpQueued = true;
 
-                doubleJump = !doubleJump;
+                if (jumpCount == 0) anim.SetTrigger("IsJump");       // перший стрибок
+                else anim.SetTrigger("DoubleJump");                    // другий стрибок
             }
         }
 
-        Flip(horizontal);
+        // Flip sprite
+        if (moveVector < 0) spriteRenderer.flipX = true;
+        else if (moveVector > 0) spriteRenderer.flipX = false;
 
-        // Animator Params
-        animator.SetBool("isRun", isSprint && horizontal != 0);
-        animator.SetFloat("IsMove", Mathf.Abs(horizontal));
-        animator.SetBool("IsGrounded", IsGrounded());
+        // Animator params
+        anim.SetFloat("IsMove", Mathf.Abs(moveVector));
+        anim.SetBool("isRun", isSprint && moveVector != 0);
+        anim.SetBool("IsGrounded", groundChecker.isGrounded);
     }
 
     private void FixedUpdate()
     {
-        float speed = Input.GetKey(KeyCode.LeftShift) ? runSpeed : moveSpeed;
-        rb.velocity = new Vector2(horizontal * speed * Time.fixedDeltaTime, rb.velocity.y);
-    }
+        // Movement
+        if (isSprint)
+            rb.velocity = new Vector2(moveVector * runSpeed * Time.fixedDeltaTime, rb.velocity.y);
+        else
+            rb.velocity = new Vector2(moveVector * moveSpeed * Time.fixedDeltaTime, rb.velocity.y);
 
-    private bool IsGrounded()
-    {
-        return Physics2D.OverlapCircle(groundCheck.position, 0.2f, groundLayer);
-    }
-
-    private void Flip(float horizontal)
-    {
-        if (isFacingRight && horizontal < 0f || !isFacingRight && horizontal > 0f)
+        // Reset jumps when grounded
+        if (groundChecker.isGrounded)
         {
-            isFacingRight = !isFacingRight;
-            Vector3 scale = transform.localScale;
-            scale.x *= -1f;
-            transform.localScale = scale;
+            jumpCount = 0;
+        }
+
+        // Perform jump
+        if (jumpQueued)
+        {
+            rb.AddForce(Vector2.up * jumpForce);
+            jumpQueued = false;
+            jumpCount++;
         }
     }
 }
